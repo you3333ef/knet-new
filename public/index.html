@@ -241,6 +241,9 @@
         <div class="header">
             <h1>🔒 Secure Payment Link Generator</h1>
             <p>Generate secure payment links for KNET payments</p>
+            <div id="demoBanner" style="background: rgba(255, 193, 7, 0.9); color: #000; padding: 10px; border-radius: 6px; margin-top: 15px; font-size: 0.9rem; display: none;">
+                ⚠️ Demo Mode Active - Showing sample functionality
+            </div>
         </div>
 
         <div class="card">
@@ -373,6 +376,29 @@
         const successMessage = document.getElementById('successMessage');
         const errorMessage = document.getElementById('errorMessage');
         const resultBox = document.getElementById('resultBox');
+        const demoBanner = document.getElementById('demoBanner');
+
+        // Check if running in demo mode (static deployment)
+        const isDemoMode = window.location.hostname.includes('netlify.app') || window.location.hostname.includes('netlify.com');
+
+        // Show demo banner if in demo mode
+        if (isDemoMode) {
+            demoBanner.style.display = 'block';
+        }
+
+        // Generate random reference number
+        function generateReference() {
+            return Array.from({length: 16}, () => Math.floor(Math.random() * 16).toString(16).toUpperCase()).join('');
+        }
+
+        // Generate UUID
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -391,32 +417,62 @@
                 expiresIn: document.getElementById('expiresIn').value
             };
 
+            // Simulate API call delay
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
             try {
-                const response = await fetch('/api/generate-link', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(formData)
-                });
+                // Try to call API, but fall back to demo mode
+                let data;
 
-                const data = await response.json();
+                try {
+                    const response = await fetch('/api/generate-link', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(formData)
+                    });
 
-                if (response.ok) {
-                    successMessage.textContent = 'Payment link generated successfully!';
-                    successMessage.style.display = 'block';
+                    data = await response.json();
 
-                    document.getElementById('resultRef').textContent = data.referenceNumber;
-                    document.getElementById('resultTxn').textContent = data.transactionId;
-                    document.getElementById('resultExpiry').textContent = new Date(data.expiresAt).toLocaleString();
-                    document.getElementById('resultLink').textContent = data.paymentLink;
+                    if (!response.ok) {
+                        throw new Error(data.error || 'API Error');
+                    }
+                } catch (apiError) {
+                    // Fall back to demo mode
+                    if (isDemoMode) {
+                        const referenceNumber = generateReference();
+                        const transactionId = generateUUID();
+                        const expiresAt = new Date();
+                        expiresAt.setHours(expiresAt.getHours() + parseInt(formData.expiresIn));
 
-                    resultBox.style.display = 'block';
-                } else {
-                    throw new Error(data.error || 'Failed to generate payment link');
+                        data = {
+                            referenceNumber,
+                            transactionId,
+                            expiresAt: expiresAt.toISOString(),
+                            paymentLink: `https://spectacular-vacherin-1b0f90.netlify.app/paylink/${referenceNumber}`,
+                            demo: true
+                        };
+                    } else {
+                        throw apiError;
+                    }
                 }
+
+                if (data.demo) {
+                    successMessage.innerHTML = '🎯 Demo Mode: Payment link generated successfully!<br><small style="font-size: 0.8em; margin-top: 5px; display: block;">Note: This is a demonstration. Deploy the backend server for full functionality.</small>';
+                } else {
+                    successMessage.textContent = 'Payment link generated successfully!';
+                }
+                successMessage.style.display = 'block';
+
+                document.getElementById('resultRef').textContent = data.referenceNumber;
+                document.getElementById('resultTxn').textContent = data.transactionId;
+                document.getElementById('resultExpiry').textContent = new Date(data.expiresAt).toLocaleString();
+                document.getElementById('resultLink').textContent = data.paymentLink;
+
+                resultBox.style.display = 'block';
             } catch (error) {
-                errorMessage.textContent = error.message || 'An error occurred';
+                errorMessage.innerHTML = `Error: ${error.message}<br><small>For full functionality, run the server locally: 'npm start'</small>`;
                 errorMessage.style.display = 'block';
             } finally {
                 loading.style.display = 'none';
@@ -435,47 +491,91 @@
 
         async function viewAllPayments() {
             try {
-                const response = await fetch('/api/payments');
-                const data = await response.json();
+                let data;
 
-                if (response.ok) {
-                    let html = '<div style="max-height: 400px; overflow-y: auto;">';
-                    html += '<h3>All Payment Links (' + data.count + ')</h3>';
-
-                    data.payments.forEach(payment => {
-                        html += '<div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 6px;">';
-                        html += '<strong>Ref:</strong> ' + payment.referenceNumber + '<br>';
-                        html += '<strong>Beneficiary:</strong> ' + payment.beneficiary + '<br>';
-                        html += '<strong>Amount:</strong> ' + payment.amount + ' ' + payment.currency + '<br>';
-                        html += '<strong>Status:</strong> <span style="color: ' +
-                            (payment.status === 'completed' ? 'green' : payment.status === 'failed' ? 'red' : 'orange') +
-                            ';">' + payment.status + '</span><br>';
-                        html += '<strong>Created:</strong> ' + new Date(payment.createdAt).toLocaleString();
-                        html += '</div>';
-                    });
-
-                    html += '</div>';
-
-                    const popup = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
-                    popup.document.write(`
-                        <!DOCTYPE html>
-                        <html>
-                        <head>
-                            <title>All Payment Links</title>
-                            <style>
-                                body { font-family: Arial, sans-serif; padding: 20px; }
-                                h2 { color: #667eea; }
-                            </style>
-                        </head>
-                        <body>
-                            ${html}
-                            <button onclick="window.close()" style="margin-top: 20px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
-                        </body>
-                        </html>
-                    `);
+                if (isDemoMode) {
+                    // Demo data for static deployment
+                    data = {
+                        count: 3,
+                        payments: [
+                            {
+                                referenceNumber: 'A1B2C3D4E5F6G7H8',
+                                beneficiary: 'ABC Company LLC',
+                                amount: '100.000',
+                                currency: 'KWD',
+                                status: 'pending',
+                                createdAt: new Date(Date.now() - 86400000).toISOString()
+                            },
+                            {
+                                referenceNumber: 'H8G7F6E5D4C3B2A1',
+                                beneficiary: 'XYZ Trading',
+                                amount: '250.500',
+                                currency: 'KWD',
+                                status: 'completed',
+                                createdAt: new Date(Date.now() - 172800000).toISOString()
+                            },
+                            {
+                                referenceNumber: '1234567890ABCDEF',
+                                beneficiary: 'Global Services',
+                                amount: '500.000',
+                                currency: 'KWD',
+                                status: 'pending',
+                                createdAt: new Date().toISOString()
+                            }
+                        ],
+                        demo: true
+                    };
                 } else {
-                    throw new Error('Failed to fetch payments');
+                    const response = await fetch('/api/payments');
+                    data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch payments');
+                    }
                 }
+
+                let html = '<div style="max-height: 400px; overflow-y: auto;">';
+                html += '<h3>All Payment Links (' + data.count + ')</h3>';
+
+                if (data.demo) {
+                    html += '<div style="background: #fff3cd; padding: 10px; margin: 10px 0; border-radius: 4px; color: #856404;">';
+                    html += '⚠️ Demo Mode: Showing sample data<br>';
+                    html += '<small>Deploy backend server to see actual payment links</small>';
+                    html += '</div>';
+                }
+
+                data.payments.forEach(payment => {
+                    html += '<div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 6px;">';
+                    html += '<strong>Ref:</strong> ' + payment.referenceNumber + '<br>';
+                    html += '<strong>Beneficiary:</strong> ' + payment.beneficiary + '<br>';
+                    html += '<strong>Amount:</strong> ' + payment.amount + ' ' + payment.currency + '<br>';
+                    html += '<strong>Status:</strong> <span style="color: ' +
+                        (payment.status === 'completed' ? 'green' : payment.status === 'failed' ? 'red' : 'orange') +
+                        ';">' + payment.status + '</span><br>';
+                    html += '<strong>Created:</strong> ' + new Date(payment.createdAt).toLocaleString();
+                    html += '</div>';
+                });
+
+                html += '</div>';
+
+                const popup = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
+                popup.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>All Payment Links</title>
+                        <style>
+                            body { font-family: Arial, sans-serif; padding: 20px; }
+                            h2 { color: #667eea; }
+                            h3 { color: #333; }
+                        </style>
+                    </head>
+                    <body>
+                        ${html}
+                        <button onclick="window.close()" style="margin-top: 20px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+                    </body>
+                    </html>
+                `);
             } catch (error) {
                 alert('Error: ' + error.message);
             }

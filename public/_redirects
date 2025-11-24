@@ -1,0 +1,10 @@
+# Redirects for Netlify
+
+# Handle payment link routes
+/paylink/*  /paylink.html  200
+
+# Handle API routes (will show 404 in demo mode)
+/api/*  /index.html  404
+
+# Default route
+/*  /index.html  200

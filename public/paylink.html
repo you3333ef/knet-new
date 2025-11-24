@@ -438,21 +438,41 @@
         let referenceNumber = '';
         let transactionId = '';
 
+        // Check if running in demo mode
+        const isDemoMode = window.location.hostname.includes('netlify.app') || window.location.hostname.includes('netlify.com');
+
         // Get reference number from URL path
         const pathParts = window.location.pathname.split('/');
         referenceNumber = pathParts[pathParts.length - 1];
 
+        // Demo data for static deployment
+        const demoPaymentData = {
+            beneficiary: 'ABC Company LLC',
+            amount: '100.000',
+            currency: 'KWD',
+            description: 'Invoice #12345 - Demo Payment',
+            referenceNumber: referenceNumber,
+            expiresAt: new Date(Date.now() + 86400000).toISOString()
+        };
+
         async function loadPaymentDetails() {
             try {
-                const response = await fetch(`/api/payment/${referenceNumber}`);
-                const data = await response.json();
+                let data;
 
-                if (!response.ok) {
-                    if (response.status === 410) {
-                        showExpired();
-                        return;
+                if (isDemoMode) {
+                    // Use demo data
+                    data = { data: demoPaymentData, demo: true };
+                } else {
+                    const response = await fetch(`/api/payment/${referenceNumber}`);
+                    data = await response.json();
+
+                    if (!response.ok) {
+                        if (response.status === 410) {
+                            showExpired();
+                            return;
+                        }
+                        throw new Error(data.error || 'Failed to load payment details');
                     }
-                    throw new Error(data.error || 'Failed to load payment details');
                 }
 
                 // Simulate loading delay
@@ -471,6 +491,17 @@
 
                     // Generate transaction ID for display
                     document.getElementById('transactionId').textContent = 'TXN-' + data.data.referenceNumber.substring(0, 8).toUpperCase();
+
+                    // Show demo mode banner if applicable
+                    if (data.demo) {
+                        const statusMessage = document.createElement('div');
+                        statusMessage.className = 'status-message show';
+                        statusMessage.style.background = '#fff3cd';
+                        statusMessage.style.color = '#856404';
+                        statusMessage.style.border = '2px solid #ffeaa7';
+                        statusMessage.innerHTML = '⚠️ Demo Mode - This is a demonstration';
+                        document.querySelector('.payment-container').insertBefore(statusMessage, document.querySelector('.payment-details').nextSibling);
+                    }
                 }, 1500);
 
             } catch (error) {
@@ -491,37 +522,42 @@
             acceptBtn.disabled = true;
             declineBtn.disabled = true;
 
+            // Simulate processing delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
             try {
-                const response = await fetch(`/api/payment/${referenceNumber}/status`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ status })
-                });
+                if (!isDemoMode) {
+                    const response = await fetch(`/api/payment/${referenceNumber}/status`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ status })
+                    });
 
-                const data = await response.json();
+                    const data = await response.json();
 
-                if (response.ok) {
-                    // Show status message
-                    statusMessage.className = 'status-message show ' +
-                        (status === 'completed' ? 'status-success' : 'status-error');
-
-                    if (status === 'completed') {
-                        document.getElementById('statusText').textContent = '✓ Payment successful';
-                        document.getElementById('statusTextAr').textContent = '✓ تم الدفع بنجاح';
-                    } else {
-                        document.getElementById('statusText').textContent = '✗ Payment declined';
-                        document.getElementById('statusTextAr').textContent = '✗ تم رفض الدفع';
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Failed to update payment status');
                     }
-
-                    // Hide buttons after showing status
-                    setTimeout(() => {
-                        document.querySelector('.buttons').style.display = 'none';
-                    }, 2000);
-                } else {
-                    throw new Error(data.error || 'Failed to update payment status');
                 }
+
+                // Show status message
+                statusMessage.className = 'status-message show ' +
+                    (status === 'completed' ? 'status-success' : 'status-error');
+
+                if (status === 'completed') {
+                    document.getElementById('statusText').textContent = '✓ Payment successful' + (isDemoMode ? ' (Demo)' : '');
+                    document.getElementById('statusTextAr').textContent = '✓ تم الدفع بنجاح';
+                } else {
+                    document.getElementById('statusText').textContent = '✗ Payment declined' + (isDemoMode ? ' (Demo)' : '');
+                    document.getElementById('statusTextAr').textContent = '✗ تم رفض الدفع';
+                }
+
+                // Hide buttons after showing status
+                setTimeout(() => {
+                    document.querySelector('.buttons').style.display = 'none';
+                }, 2000);
             } catch (error) {
                 console.error('Error updating payment:', error);
                 alert('Error: ' + error.message);
