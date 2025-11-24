@@ -97,9 +97,9 @@ app.post('/api/generate-link', (req, res) => {
     paymentLinks.set(referenceNumber, linkData);
     paymentStatuses.set(transactionId, 'pending');
 
-    // Generate payment link
+    // Generate payment link (Gulf Bank style)
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
-    const paymentLink = `${baseUrl}/paylink/${referenceNumber}`;
+    const paymentLink = `${baseUrl}/paylink/index.html?refNo=${referenceNumber}&islang=en`;
 
     res.json({
       success: true,
@@ -246,9 +246,38 @@ app.get('/api/payments', (req, res) => {
   }
 });
 
-// Serve payment page
-app.get('/paylink/:referenceNumber', (req, res) => {
-  const { referenceNumber } = req.params;
+// Serve payment page with query parameters (Gulf Bank style)
+app.get('/paylink/index.html', (req, res) => {
+  const { refNo, islang } = req.query;
+  const language = islang || 'en';
+  const referenceNumber = refNo;
+
+  if (!referenceNumber) {
+    return res.status(400).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Payment Link Error</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+          .error { color: #721c24; background-color: #f8d7da; padding: 20px; border-radius: 4px; }
+          .bilingual { margin-top: 10px; }
+          .arabic { direction: rtl; text-align: right; margin-top: 5px; }
+        </style>
+      </head>
+      <body>
+        <div class="error">
+          <h1>Invalid Payment Link</h1>
+          <div class="bilingual">
+            <div>The payment link is invalid.</div>
+            <div class="arabic">الرابط غير صالح</div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
   const linkData = paymentLinks.get(referenceNumber);
 
   if (!linkData) {
@@ -260,12 +289,17 @@ app.get('/paylink/:referenceNumber', (req, res) => {
         <style>
           body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
           .error { color: #721c24; background-color: #f8d7da; padding: 20px; border-radius: 4px; }
+          .bilingual { margin-top: 10px; }
+          .arabic { direction: rtl; text-align: right; margin-top: 5px; }
         </style>
       </head>
       <body>
         <div class="error">
           <h1>Payment Link Not Found</h1>
-          <p>The requested payment link could not be found.</p>
+          <div class="bilingual">
+            <div>The requested payment link could not be found.</div>
+            <div class="arabic">لم يتم العثور على رابط الدفع المطلوب</div>
+          </div>
         </div>
       </body>
       </html>
@@ -299,8 +333,19 @@ app.get('/paylink/:referenceNumber', (req, res) => {
     `);
   }
 
+  // Store language and reference for the page
+  res.locals.language = language;
+  res.locals.referenceNumber = referenceNumber;
+
   // Serve payment page
   res.sendFile(path.join(__dirname, 'public', 'paylink.html'));
+});
+
+// Legacy route support
+app.get('/paylink/:referenceNumber', (req, res) => {
+  const { referenceNumber } = req.params;
+  // Redirect to new format
+  res.redirect(`/paylink/index.html?refNo=${referenceNumber}&islang=en`);
 });
 
 // Health check
